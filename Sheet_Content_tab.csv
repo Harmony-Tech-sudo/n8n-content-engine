@@ -1,0 +1,2 @@
+id,status,topic,keyword,audience,tone,language,template_name,video_provider,scene_count,publish_at,attempts,qa_notes,blog_title,meta_description,blog_md,yt_title,yt_description,yt_tags,caption,script_json,video_started_at,lock_until,provider_used,drive_file_id,drive_url,final_video_path,youtube_url,published_at,error,updated_at
+post-001,Draft,How to make cold brew coffee at home,cold brew coffee,coffee beginners,friendly and practical,English,Default Brand Voice,omni_api,4,,0,,,,,,,,,,,,,,,,,,,

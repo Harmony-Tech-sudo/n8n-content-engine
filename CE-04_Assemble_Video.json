@@ -1,0 +1,819 @@
+{
+  "name": "CE-04 | Assemble Video (ffmpeg)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## CE-04 | Assemble Video\n**Trigger:** every 10 minutes. Needs **ffmpeg + ffprobe** installed on the n8n machine and the *Execute Command* node enabled.\n\n**Flow**\n1. Picks one row with `status = Clips Ready`, sets it to `Assembling`.\n2. **ffprobe** reads the real length of every clip.\n3. A Code node writes an **SRT caption file** (4-word chunks timed across each clip) and builds the ffmpeg command.\n4. **ffmpeg step 1:** scales/pads every clip to 1080x1920 (9:16), 30 fps, stereo audio and joins them.\n   **ffmpeg step 2:** burns the captions in -> `final.mp4`.\n5. Uploads `final.mp4` to the *final videos* Drive folder and writes `drive_url` + `drive_file_id` to the sheet.\n6. Status `Video Ready` + email. **Watch it, then set status to `Publish`** (this is your second approval gate).\n\n**If ffmpeg fails:** the row becomes `Error` with the message in the `error` column. Fix the cause and set it back to `Clips Ready`.\n\n**Caption look:** edit `FontSize`, `MarginV` and `Outline` in the *Build SRT and Command* node.",
+        "height": 380,
+        "width": 580,
+        "color": 4
+      },
+      "id": "a8424e97-7351-5e21-a29a-2127914f3a63",
+      "name": "Note - How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "e1b31ff7-fd63-54dc-bfad-7555283ad372",
+      "name": "Every 10 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ed9f1f59-bbc8-5d14-9608-3fb96494f977",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg00",
+              "name": "sheetId",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg01",
+              "name": "notifyEmail",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg02",
+              "name": "workDir",
+              "value": "/home/YOUR_USER/.n8n-files/content-engine",
+              "type": "string"
+            },
+            {
+              "id": "cfg03",
+              "name": "manualFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_MANUAL_CLIPS",
+              "type": "string"
+            },
+            {
+              "id": "cfg04",
+              "name": "finalFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_FINAL_VIDEOS",
+              "type": "string"
+            },
+            {
+              "id": "cfg05",
+              "name": "textModel",
+              "value": "gemini-3.8-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg06",
+              "name": "omniModel",
+              "value": "gemini-omni-1.1-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg07",
+              "name": "veoModel",
+              "value": "veo-3.1-fast-generate-preview",
+              "type": "string"
+            },
+            {
+              "id": "cfg08",
+              "name": "defaultProvider",
+              "value": "omni_api",
+              "type": "string"
+            },
+            {
+              "id": "cfg09",
+              "name": "maxVideosPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg10",
+              "name": "maxPublishPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg11",
+              "name": "maxAttempts",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg12",
+              "name": "defaultSceneCount",
+              "value": 4,
+              "type": "number"
+            },
+            {
+              "id": "cfg13",
+              "name": "defaultMinWords",
+              "value": 600,
+              "type": "number"
+            },
+            {
+              "id": "cfg14",
+              "name": "defaultMaxWords",
+              "value": 1200,
+              "type": "number"
+            },
+            {
+              "id": "cfg15",
+              "name": "minDensity",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "cfg16",
+              "name": "maxDensity",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg17",
+              "name": "youtubePrivacy",
+              "value": "private",
+              "type": "string"
+            },
+            {
+              "id": "cfg18",
+              "name": "aiDisclosure",
+              "value": "Made with AI.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "ffc13dc6-1eba-58f0-8046-f6a1129037f7",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "6d0e128c-ca33-588a-a582-23122a23bfba",
+      "name": "Get Content Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('Config').first().json;\nconst rows = $input.all().map(i => i.json);\nconst pick = rows.find(r => String(r.status).trim() === 'Clips Ready');\nif (!pick) return [];\nlet scenes;\ntry { scenes = JSON.parse(pick.script_json); }\ncatch (e) { throw new Error('script_json is not valid JSON for row ' + pick.id); }\nconst safeId = String(pick.id).replace(/[^A-Za-z0-9_-]/g, '_');\nconst dir = String(cfg.workDir).replace(/[\\\\/]+$/, '') + '/' + safeId;\nconst probe = scenes.map(s =>\n  'ffprobe -v error -show_entries format=duration -of csv=p=0 \"' + dir + '/scene_' + s.n + '.mp4\"'\n).join(' && ');\nreturn [{ json: { ...pick, safeId, scenes, dir, probe } }];\n"
+      },
+      "id": "e7574a73-febd-5e41-9578-6fa9f85ff03b",
+      "name": "Pick Clips Ready",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Clips Ready').first().json.id }}",
+            "status": "Assembling",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "2891e48f-d2d8-50dd-93df-9f9f8dced14b",
+      "name": "Mark Assembling",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "={{ $('Pick Clips Ready').first().json.probe }}"
+      },
+      "id": "057ded6e-7e40-50a6-99e9-8b121372b5e7",
+      "name": "Probe Durations",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        300
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst pick = $('Pick Clips Ready').first().json;\nconst durs = String($input.first().json.stdout || '').trim().split(/\\r?\\n/).map(s => parseFloat(s)).filter(x => !isNaN(x));\nconst scenes = pick.scenes;\nif (durs.length !== scenes.length) throw new Error('Expected ' + scenes.length + ' clip durations but got ' + durs.length);\n\nconst p = (n, l = 2) => String(n).padStart(l, '0');\nconst fmt = (t) => {\n  const ms = Math.max(0, Math.round(t * 1000));\n  return p(Math.floor(ms / 3600000)) + ':' + p(Math.floor(ms % 3600000 / 60000)) + ':' + p(Math.floor(ms % 60000 / 1000)) + ',' + p(ms % 1000, 3);\n};\n\n// Caption timing: split each scene's caption into 4-word chunks spread across the clip\nlet t = 0, idx = 1, srt = '';\nscenes.forEach((sc, i) => {\n  const dur = durs[i];\n  const words = String(sc.caption || sc.spoken_line || '').trim().split(/\\s+/).filter(Boolean);\n  if (words.length) {\n    const lead = Math.min(0.3, dur * 0.05), tail = Math.min(0.4, dur * 0.08);\n    const span = Math.max(0.5, dur - lead - tail);\n    const chunks = [];\n    for (let k = 0; k < words.length; k += 4) chunks.push(words.slice(k, k + 4));\n    let cur = t + lead;\n    chunks.forEach(ch => {\n      const d = span * ch.length / words.length;\n      srt += idx++ + '\\n' + fmt(cur) + ' --> ' + fmt(cur + d) + '\\n' + ch.join(' ') + '\\n\\n';\n      cur += d;\n    });\n  }\n  t += dur;\n});\n\n// ffmpeg: normalise every clip to 1080x1920 / 30fps / stereo 44.1k, join them, then burn the captions in\nconst inputs = scenes.map(s => '-i \"scene_' + s.n + '.mp4\"').join(' ');\nlet fc = '';\nscenes.forEach((s, i) => {\n  fc += '[' + i + ':v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v' + i + '];' +\n        '[' + i + ':a]aresample=44100,aformat=channel_layouts=stereo[a' + i + '];';\n});\nfc += scenes.map((s, i) => '[v' + i + '][a' + i + ']').join('') + 'concat=n=' + scenes.length + ':v=1:a=1[outv][outa]';\nconst enc = '-c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p';\nconst cmd1 = 'ffmpeg -y -hide_banner -loglevel error ' + inputs + ' -filter_complex \"' + fc + '\" -map \"[outv]\" -map \"[outa]\" ' + enc + ' -c:a aac -b:a 160k joined.mp4';\nconst style = 'Bold=1\\\\,FontSize=11\\\\,Outline=2\\\\,Alignment=2\\\\,MarginV=30';\nconst cmd2 = 'ffmpeg -y -hide_banner -loglevel error -i joined.mp4 -vf \"subtitles=captions.srt:force_style=' + style + '\" ' + enc + ' -c:a copy final.mp4';\n\nreturn [{ json: { id: pick.id, safeId: pick.safeId, dir: pick.dir, srt, command: 'cd \"' + pick.dir + '\" && ' + cmd1 + ' && ' + cmd2 } }];\n"
+      },
+      "id": "dd5f2b9c-0eee-5286-971f-df5885d60797",
+      "name": "Build SRT and Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "srt",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "captions.srt"
+        }
+      },
+      "id": "d83214fb-1c2a-5c80-ba11-941b440d6642",
+      "name": "SRT to File",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Build SRT and Command').first().json.dir + '/captions.srt' }}",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "d1f4903a-a878-5f97-b643-3de3116b139f",
+      "name": "Write SRT",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{ $('Build SRT and Command').first().json.command }}"
+      },
+      "id": "fc71e4ed-fa20-57bc-bfdd-04351105f03a",
+      "name": "Run ffmpeg",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        300
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $('Build SRT and Command').first().json.dir + '/final.mp4' }}",
+        "options": {}
+      },
+      "id": "ff1f75f5-5af2-5a91-b2cf-d62a76201132",
+      "name": "Read Final Video",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $('Build SRT and Command').first().json.safeId + '.mp4' }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.finalFolderId }}"
+        },
+        "options": {}
+      },
+      "id": "2c749857-69a0-595c-8801-b54db6c2bdc2",
+      "name": "Upload to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2440,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Clips Ready').first().json.id }}",
+            "status": "Video Ready",
+            "drive_file_id": "={{ $('Upload to Drive').first().json.id }}",
+            "drive_url": "={{ 'https://drive.google.com/file/d/' + $('Upload to Drive').first().json.id + '/view' }}",
+            "final_video_path": "={{ $('Build SRT and Command').first().json.dir + '/final.mp4' }}",
+            "error": "",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "drive_file_id",
+              "displayName": "drive_file_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "drive_url",
+              "displayName": "drive_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_video_path",
+              "displayName": "final_video_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "c32e15c0-a2d0-5dc0-80b6-8789382f4753",
+      "name": "Mark Video Ready",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2660,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.notifyEmail }}",
+        "subject": "=Video ready for review: {{ $('Pick Clips Ready').first().json.yt_title }}",
+        "emailType": "text",
+        "message": "=The video for row {{ $('Pick Clips Ready').first().json.id }} has been assembled.\n\nWatch it: https://drive.google.com/file/d/{{ $('Upload to Drive').first().json.id }}/view\n\nIf you are happy with it, set status to Publish in the sheet (CE-05 uploads it to YouTube).\nhttps://docs.google.com/spreadsheets/d/{{ $('Config').first().json.sheetId }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "94bf33b3-6734-5df7-9f94-d8cd3a086124",
+      "name": "Email - video ready",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Clips Ready').first().json.id }}",
+            "status": "Error",
+            "error": "={{ String(($json.error && $json.error.message) || $json.stderr || 'Assembly step failed - open the n8n execution').slice(0, 400) }}",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "1b375437-6f16-5bab-9351-0f9012e3f7a8",
+      "name": "Mark Assembly Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1560,
+        560
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get Content Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Content Rows": {
+      "main": [
+        [
+          {
+            "node": "Pick Clips Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Clips Ready": {
+      "main": [
+        [
+          {
+            "node": "Mark Assembling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Assembling": {
+      "main": [
+        [
+          {
+            "node": "Probe Durations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe Durations": {
+      "main": [
+        [
+          {
+            "node": "Build SRT and Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Assembly Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SRT and Command": {
+      "main": [
+        [
+          {
+            "node": "SRT to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SRT to File": {
+      "main": [
+        [
+          {
+            "node": "Write SRT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write SRT": {
+      "main": [
+        [
+          {
+            "node": "Run ffmpeg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run ffmpeg": {
+      "main": [
+        [
+          {
+            "node": "Read Final Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Assembly Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Final Video": {
+      "main": [
+        [
+          {
+            "node": "Upload to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Drive": {
+      "main": [
+        [
+          {
+            "node": "Mark Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Video Ready": {
+      "main": [
+        [
+          {
+            "node": "Email - video ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

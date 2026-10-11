@@ -1,0 +1,681 @@
+{
+  "name": "CE-05 | Publish to YouTube",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## CE-05 | Publish to YouTube Shorts\n**Trigger:** every 15 minutes.\n\n**Flow**\n1. Picks one row with `status = Publish` (you set this after watching the video). If `publish_at` has a date/time, it waits until then; blank = publish now.\n2. Daily cap: at most `maxPublishPerDay` uploads per day.\n3. Sets `Publishing`, downloads the final MP4 from Drive and uploads it with the **YouTube** node (title, description + \"#Shorts\" + AI disclosure line, tags).\n4. Writes `youtube_url` and `published_at`, status `Published`. If the upload fails the status becomes `Publish Failed` (set it back to `Publish` to retry).\n\n**Privacy:** uploads use `youtubePrivacy` from Config (default **private**). Projects that have not passed Google's YouTube API audit can usually only upload private videos anyway. Switch to `public` once you are ready.\n\n**AI label:** if your video looks realistic, YouTube asks you to disclose altered/synthetic content. The API node can't set that flag, so open the private video in YouTube Studio and set it before making it public.\n\n**Later:** TikTok / Instagram branches can be added here as extra nodes after *Download Final Video*.",
+        "height": 420,
+        "width": 580,
+        "color": 4
+      },
+      "id": "cfdba11e-5c6f-52ee-a3cd-e373aed4f74a",
+      "name": "Note - How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "e9b9d029-a545-5dc4-b77d-03e9178a3368",
+      "name": "Every 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b3a376e1-1977-5d21-af6e-3dfb35a87e17",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg00",
+              "name": "sheetId",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg01",
+              "name": "notifyEmail",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg02",
+              "name": "workDir",
+              "value": "/home/YOUR_USER/.n8n-files/content-engine",
+              "type": "string"
+            },
+            {
+              "id": "cfg03",
+              "name": "manualFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_MANUAL_CLIPS",
+              "type": "string"
+            },
+            {
+              "id": "cfg04",
+              "name": "finalFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_FINAL_VIDEOS",
+              "type": "string"
+            },
+            {
+              "id": "cfg05",
+              "name": "textModel",
+              "value": "gemini-3.8-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg06",
+              "name": "omniModel",
+              "value": "gemini-omni-1.1-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg07",
+              "name": "veoModel",
+              "value": "veo-3.1-fast-generate-preview",
+              "type": "string"
+            },
+            {
+              "id": "cfg08",
+              "name": "defaultProvider",
+              "value": "omni_api",
+              "type": "string"
+            },
+            {
+              "id": "cfg09",
+              "name": "maxVideosPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg10",
+              "name": "maxPublishPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg11",
+              "name": "maxAttempts",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg12",
+              "name": "defaultSceneCount",
+              "value": 4,
+              "type": "number"
+            },
+            {
+              "id": "cfg13",
+              "name": "defaultMinWords",
+              "value": 600,
+              "type": "number"
+            },
+            {
+              "id": "cfg14",
+              "name": "defaultMaxWords",
+              "value": 1200,
+              "type": "number"
+            },
+            {
+              "id": "cfg15",
+              "name": "minDensity",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "cfg16",
+              "name": "maxDensity",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg17",
+              "name": "youtubePrivacy",
+              "value": "private",
+              "type": "string"
+            },
+            {
+              "id": "cfg18",
+              "name": "aiDisclosure",
+              "value": "Made with AI.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "af8a199b-f64f-5bac-9b67-0846d8a6e9ae",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "82d4ffe0-8e2e-5b44-8abb-6e0da280bf2f",
+      "name": "Get Content Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('Config').first().json;\nconst rows = $input.all().map(i => i.json);\nconst today = $now.toFormat('yyyy-MM-dd');\nconst publishedToday = rows.filter(r => String(r.published_at || '').startsWith(today)).length;\nif (publishedToday >= Number(cfg.maxPublishPerDay)) return [];\nconst now = Date.now();\nconst pick = rows.find(r =>\n  String(r.status).trim() === 'Publish' && r.drive_file_id &&\n  (!r.publish_at || isNaN(Date.parse(r.publish_at)) || Date.parse(r.publish_at) <= now)\n);\nif (!pick) return [];\nreturn [{ json: pick }];\n"
+      },
+      "id": "f75284e9-6fca-5fe0-b088-8e641f79a5d8",
+      "name": "Pick Publishable",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Publishable').first().json.id }}",
+            "status": "Publishing",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "e560d755-b9e2-5a31-a4bd-c1b9f56ba12f",
+      "name": "Mark Publishing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Pick Publishable').first().json.drive_file_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "8accbb4b-3f15-5bcb-84be-9cc47c6f652c",
+      "name": "Download Final Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Pick Publishable').first().json.yt_title }}",
+        "regionCode": "US",
+        "categoryId": "22",
+        "binaryProperty": "data",
+        "options": {
+          "description": "={{ $('Pick Publishable').first().json.yt_description + '\\n\\n#Shorts\\n' + $('Config').first().json.aiDisclosure }}",
+          "privacyStatus": "={{ $('Config').first().json.youtubePrivacy }}",
+          "tags": "={{ $('Pick Publishable').first().json.yt_tags }}",
+          "selfDeclaredMadeForKids": false
+        }
+      },
+      "id": "b7305a4e-ad47-5e81-a3a3-c43db6703436",
+      "name": "YouTube Upload",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Publishable').first().json.id }}",
+            "status": "Published",
+            "youtube_url": "={{ 'https://www.youtube.com/shorts/' + $('YouTube Upload').first().json.id }}",
+            "published_at": "={{ $now.toISO() }}",
+            "error": "",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "youtube_url",
+              "displayName": "youtube_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "published_at",
+              "displayName": "published_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "146dd047-4994-5948-b01d-5b326b865e38",
+      "name": "Mark Published",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1580,
+        220
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.notifyEmail }}",
+        "subject": "=Published: {{ $('Pick Publishable').first().json.yt_title }}",
+        "emailType": "text",
+        "message": "=Uploaded to YouTube (privacy: {{ $('Config').first().json.youtubePrivacy }}).\nhttps://www.youtube.com/shorts/{{ $('YouTube Upload').first().json.id }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0716f760-0fa9-593d-8b54-6f687250ab0d",
+      "name": "Email - published",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1820,
+        220
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Publishable').first().json.id }}",
+            "status": "Publish Failed",
+            "error": "={{ String(($json.error && $json.error.message) || 'YouTube upload failed - open the n8n execution').slice(0, 400) }}",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "5de9a129-f4d1-5d48-9b69-256996bf61d1",
+      "name": "Mark Publish Failed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1580,
+        420
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get Content Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Content Rows": {
+      "main": [
+        [
+          {
+            "node": "Pick Publishable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Publishable": {
+      "main": [
+        [
+          {
+            "node": "Mark Publishing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Publishing": {
+      "main": [
+        [
+          {
+            "node": "Download Final Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Final Video": {
+      "main": [
+        [
+          {
+            "node": "YouTube Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube Upload": {
+      "main": [
+        [
+          {
+            "node": "Mark Published",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Publish Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Published": {
+      "main": [
+        [
+          {
+            "node": "Email - published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

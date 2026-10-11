@@ -1,0 +1,598 @@
+{
+  "name": "CE-03 | Manual Clip Pickup",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## CE-03 | Manual Clip Pickup\n**Why it exists:** the third option in the video chain. When Omni and Veo fail (or a row has `video_provider = manual_drop`) CE-02 emails you the scene prompts. You generate the clips in **Google Flow** with your Plus plan and drop them in a Drive folder.\n\n**Trigger:** every 10 minutes.\n\n**Flow**\n1. Finds the first row with `status = Awaiting Manual Clips`.\n2. Searches the *manual clips* Drive folder (`manualFolderId`) for files named `<id>_s1.mp4`, `<id>_s2.mp4` ...\n3. Downloads each one into `workDir/<id>/scene_N.mp4`.\n4. Checks whether **every** scene now exists on disk. If yes -> status `Clips Ready`. If not, it simply waits for the next upload.\n\n**Tips:** the file name must contain the row `id` followed by `_s` and the scene number. Clips need an audio track. Nothing happens (and nothing is billed) if the folder is empty.",
+        "height": 330,
+        "width": 560,
+        "color": 4
+      },
+      "id": "ca1d7ab4-8ab4-58c4-ab33-127969576f38",
+      "name": "Note - How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "e94b4fb3-66cd-5fb2-98b6-6349fe1e2379",
+      "name": "Every 10 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4753e9b8-37a2-569d-a471-c990712a63d3",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg00",
+              "name": "sheetId",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg01",
+              "name": "notifyEmail",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg02",
+              "name": "workDir",
+              "value": "/home/YOUR_USER/.n8n-files/content-engine",
+              "type": "string"
+            },
+            {
+              "id": "cfg03",
+              "name": "manualFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_MANUAL_CLIPS",
+              "type": "string"
+            },
+            {
+              "id": "cfg04",
+              "name": "finalFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_FINAL_VIDEOS",
+              "type": "string"
+            },
+            {
+              "id": "cfg05",
+              "name": "textModel",
+              "value": "gemini-3.8-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg06",
+              "name": "omniModel",
+              "value": "gemini-omni-1.1-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg07",
+              "name": "veoModel",
+              "value": "veo-3.1-fast-generate-preview",
+              "type": "string"
+            },
+            {
+              "id": "cfg08",
+              "name": "defaultProvider",
+              "value": "omni_api",
+              "type": "string"
+            },
+            {
+              "id": "cfg09",
+              "name": "maxVideosPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg10",
+              "name": "maxPublishPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg11",
+              "name": "maxAttempts",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg12",
+              "name": "defaultSceneCount",
+              "value": 4,
+              "type": "number"
+            },
+            {
+              "id": "cfg13",
+              "name": "defaultMinWords",
+              "value": 600,
+              "type": "number"
+            },
+            {
+              "id": "cfg14",
+              "name": "defaultMaxWords",
+              "value": 1200,
+              "type": "number"
+            },
+            {
+              "id": "cfg15",
+              "name": "minDensity",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "cfg16",
+              "name": "maxDensity",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg17",
+              "name": "youtubePrivacy",
+              "value": "private",
+              "type": "string"
+            },
+            {
+              "id": "cfg18",
+              "name": "aiDisclosure",
+              "value": "Made with AI.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "8db6d144-4c33-5696-9b9d-d13c4a433823",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "8594e5fd-fdf2-50a5-b085-3bd45eb61bc4",
+      "name": "Get Content Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('Config').first().json;\nconst rows = $input.all().map(i => i.json);\nconst pick = rows.find(r => String(r.status).trim() === 'Awaiting Manual Clips');\nif (!pick) return [];\nlet scenes;\ntry { scenes = JSON.parse(pick.script_json); }\ncatch (e) { throw new Error('script_json is not valid JSON for row ' + pick.id); }\nconst safeId = String(pick.id).replace(/[^A-Za-z0-9_-]/g, '_');\nconst dir = String(cfg.workDir).replace(/[\\\\/]+$/, '') + '/' + safeId;\nreturn [{ json: { ...pick, safeId, scenes, dir } }];\n"
+      },
+      "id": "913b2017-b8fa-5adc-8b6d-d2039e899d3b",
+      "name": "Pick Waiting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "operation": "search",
+        "searchMethod": "name",
+        "queryString": "={{ $json.safeId + '_s' }}",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Config').first().json.manualFolderId }}",
+            "mode": "id"
+          }
+        },
+        "options": {}
+      },
+      "id": "44223536-c469-5b99-a689-d894b108db03",
+      "name": "Search Manual Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst pick = $('Pick Waiting').first().json;\nconst out = [];\nfor (const it of $input.all()) {\n  const f = it.json;\n  if (!f || !f.id || !f.name) continue;\n  const m = String(f.name).match(/_s(\\d+)\\.(mp4|mov|webm|m4v)$/i);\n  if (!m) continue;\n  if (!String(f.name).startsWith(pick.safeId + '_s')) continue;\n  out.push({ json: { fileId: f.id, name: f.name, n: parseInt(m[1], 10), target: pick.dir + '/scene_' + parseInt(m[1], 10) + '.mp4' } });\n}\nreturn out;\n"
+      },
+      "id": "13672283-3780-509f-a780-234f354a67b9",
+      "name": "Parse Manual Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.fileId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "a19b0580-0e6d-521f-87bc-1cc245da517e",
+      "name": "Download Clip",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Parse Manual Files').item.json.target }}",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "8826bed4-f113-5fe7-b273-28be5405771d",
+      "name": "Write Manual Clip",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=node -e \"const fs=require('fs');const d=process.argv[1];fs.mkdirSync(d,{recursive:true});console.log(fs.readdirSync(d).join(','))\" \"{{ $('Pick Waiting').first().json.dir }}\""
+      },
+      "id": "3a036501-d04d-5ba0-ab52-e8f397cf640b",
+      "name": "Scan Clip Folder",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst pick = $('Pick Waiting').first().json;\nconst have = new Set(String($input.first().json.stdout || '').trim().split(',').map(s => s.trim()).filter(Boolean));\nconst missing = pick.scenes.filter(s => !have.has('scene_' + s.n + '.mp4')).map(s => s.n);\nreturn [{ json: { complete: missing.length === 0, missing } }];\n"
+      },
+      "id": "49a42d51-09e1-5338-bc74-219392302b71",
+      "name": "Verify All Scenes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.complete }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "461cc407-fe06-54a2-aab0-19374b805360",
+      "name": "All Scenes Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Pick Waiting').first().json.id }}",
+            "status": "Clips Ready",
+            "error": "",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "05e78284-595e-58cd-b83e-ce1885b1448d",
+      "name": "Mark Clips Ready",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2440,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get Content Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Content Rows": {
+      "main": [
+        [
+          {
+            "node": "Pick Waiting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Waiting": {
+      "main": [
+        [
+          {
+            "node": "Search Manual Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Manual Folder": {
+      "main": [
+        [
+          {
+            "node": "Parse Manual Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Manual Files": {
+      "main": [
+        [
+          {
+            "node": "Download Clip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Clip": {
+      "main": [
+        [
+          {
+            "node": "Write Manual Clip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Manual Clip": {
+      "main": [
+        [
+          {
+            "node": "Scan Clip Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan Clip Folder": {
+      "main": [
+        [
+          {
+            "node": "Verify All Scenes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify All Scenes": {
+      "main": [
+        [
+          {
+            "node": "All Scenes Present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Scenes Present?": {
+      "main": [
+        [
+          {
+            "node": "Mark Clips Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

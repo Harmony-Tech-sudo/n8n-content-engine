@@ -1,0 +1,322 @@
+{
+  "name": "CE-00 | Error Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## CE-00 | Error Handler\n**What it does:** any workflow that names this one as its *Error Workflow* calls it when an execution fails.\n\n**Steps**\n1. **Error Trigger** receives the failed workflow's name, the node that broke, the error message and a link to the execution.\n2. A row is added to the **Errors** tab of your Google Sheet.\n3. An email is sent to `notifyEmail` (set in the *Config* node).\n\n**Setup:** open each of the other 5 workflows -> Settings (three dots) -> *Error workflow* -> choose this one.\n\n**Good to know:** error workflows only fire for *automatic* runs (schedules), not when you click *Execute workflow* manually.\nRows that fail mid-way keep a status in the sheet (e.g. `Generating`, `Rendering`). Set them back to the previous status to retry.",
+        "height": 330,
+        "width": 520,
+        "color": 4
+      },
+      "id": "c4edf4ee-c5ce-5ed8-841c-b59b19d6d89b",
+      "name": "Note - How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "9a1dc297-7465-5b97-9ebd-e9e8b8ff13c4",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg00",
+              "name": "sheetId",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg01",
+              "name": "notifyEmail",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg02",
+              "name": "workDir",
+              "value": "/home/YOUR_USER/.n8n-files/content-engine",
+              "type": "string"
+            },
+            {
+              "id": "cfg03",
+              "name": "manualFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_MANUAL_CLIPS",
+              "type": "string"
+            },
+            {
+              "id": "cfg04",
+              "name": "finalFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_FINAL_VIDEOS",
+              "type": "string"
+            },
+            {
+              "id": "cfg05",
+              "name": "textModel",
+              "value": "gemini-3.8-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg06",
+              "name": "omniModel",
+              "value": "gemini-omni-1.1-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg07",
+              "name": "veoModel",
+              "value": "veo-3.1-fast-generate-preview",
+              "type": "string"
+            },
+            {
+              "id": "cfg08",
+              "name": "defaultProvider",
+              "value": "omni_api",
+              "type": "string"
+            },
+            {
+              "id": "cfg09",
+              "name": "maxVideosPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg10",
+              "name": "maxPublishPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg11",
+              "name": "maxAttempts",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg12",
+              "name": "defaultSceneCount",
+              "value": 4,
+              "type": "number"
+            },
+            {
+              "id": "cfg13",
+              "name": "defaultMinWords",
+              "value": 600,
+              "type": "number"
+            },
+            {
+              "id": "cfg14",
+              "name": "defaultMaxWords",
+              "value": 1200,
+              "type": "number"
+            },
+            {
+              "id": "cfg15",
+              "name": "minDensity",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "cfg16",
+              "name": "maxDensity",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg17",
+              "name": "youtubePrivacy",
+              "value": "private",
+              "type": "string"
+            },
+            {
+              "id": "cfg18",
+              "name": "aiDisclosure",
+              "value": "Made with AI.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "84baa7da-1ffd-56ff-ac35-b0930c155975",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Errors",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $now.toISO() }}",
+            "workflow": "={{ $('Error Trigger').first().json.workflow.name }}",
+            "node": "={{ $('Error Trigger').first().json.execution.lastNodeExecuted }}",
+            "message": "={{ String($('Error Trigger').first().json.execution.error.message).slice(0, 500) }}",
+            "execution_url": "={{ $('Error Trigger').first().json.execution.url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "node",
+              "displayName": "node",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_url",
+              "displayName": "execution_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "fba9366f-b42b-5a58-88a5-89c057473a28",
+      "name": "Log to Errors tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.notifyEmail }}",
+        "subject": "=n8n failure: {{ $('Error Trigger').first().json.workflow.name }}",
+        "emailType": "text",
+        "message": "=Workflow: {{ $('Error Trigger').first().json.workflow.name }}\nFailed node: {{ $('Error Trigger').first().json.execution.lastNodeExecuted }}\nReason: {{ $('Error Trigger').first().json.execution.error.message }}\nExecution: {{ $('Error Trigger').first().json.execution.url }}\n\nOpen the Content tab and check which row is stuck in a working status (Generating / Rendering / Assembling / Publishing). Set it back to its previous status to retry.",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "df759072-51a7-5458-8322-31272f58723b",
+      "name": "Email alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Log to Errors tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Errors tab": {
+      "main": [
+        [
+          {
+            "node": "Email alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

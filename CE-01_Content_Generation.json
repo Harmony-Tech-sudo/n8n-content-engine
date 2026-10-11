@@ -1,0 +1,1048 @@
+{
+  "name": "CE-01 | Content Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## CE-01 | Content Generation\n**Trigger:** every 5 minutes (or click *Run now*).\n\n**Flow**\n1. Reads rows from the **Content** tab where `status = Ready` and takes **one** row.\n2. Sets it to `Generating` immediately (so nothing runs twice and a crash can't cause an endless loop).\n3. Loads your brand-voice row from the **Templates** tab (matched by `template_name`).\n4. Builds the prompt and calls **Gemini** (`generateContent`) asking for JSON: blog, YouTube title/description/tags, caption and a scene-by-scene video script.\n5. **QA gate** (Code node): valid JSON, blog length, keyword in title / first 100 words / density, banned phrases, scene count, spoken-line length.\n6. **Pass** -> content saved, status `Pending Approval`, you get an email.\n   **Fail** -> notes saved in `qa_notes`, `attempts` +1, status goes back to `Ready` (the next poll regenerates with the fixes included). After `maxAttempts` the status becomes `QA Failed` and you get an email.\n\n**Your approval step:** read the row, edit anything you like (even `script_json`), then change `status` to **Approved**. CE-02 picks it up from there.\n\n**Edit in Config node:** sheetId, notifyEmail, textModel, QA thresholds.",
+        "height": 400,
+        "width": 560,
+        "color": 4
+      },
+      "id": "799cdb9b-3a3d-57a0-b06e-5e006cbad86d",
+      "name": "Note - How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "49b82d8c-cff3-5329-a864-a6de39d8765c",
+      "name": "Every 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ac423c07-e5dd-5d31-809f-3ec6cb81a98a",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg00",
+              "name": "sheetId",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg01",
+              "name": "notifyEmail",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg02",
+              "name": "workDir",
+              "value": "/home/YOUR_USER/.n8n-files/content-engine",
+              "type": "string"
+            },
+            {
+              "id": "cfg03",
+              "name": "manualFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_MANUAL_CLIPS",
+              "type": "string"
+            },
+            {
+              "id": "cfg04",
+              "name": "finalFolderId",
+              "value": "PASTE_DRIVE_FOLDER_ID_FOR_FINAL_VIDEOS",
+              "type": "string"
+            },
+            {
+              "id": "cfg05",
+              "name": "textModel",
+              "value": "gemini-3.8-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg06",
+              "name": "omniModel",
+              "value": "gemini-omni-1.1-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg07",
+              "name": "veoModel",
+              "value": "veo-3.1-fast-generate-preview",
+              "type": "string"
+            },
+            {
+              "id": "cfg08",
+              "name": "defaultProvider",
+              "value": "omni_api",
+              "type": "string"
+            },
+            {
+              "id": "cfg09",
+              "name": "maxVideosPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg10",
+              "name": "maxPublishPerDay",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg11",
+              "name": "maxAttempts",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg12",
+              "name": "defaultSceneCount",
+              "value": 4,
+              "type": "number"
+            },
+            {
+              "id": "cfg13",
+              "name": "defaultMinWords",
+              "value": 600,
+              "type": "number"
+            },
+            {
+              "id": "cfg14",
+              "name": "defaultMaxWords",
+              "value": 1200,
+              "type": "number"
+            },
+            {
+              "id": "cfg15",
+              "name": "minDensity",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "cfg16",
+              "name": "maxDensity",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "cfg17",
+              "name": "youtubePrivacy",
+              "value": "private",
+              "type": "string"
+            },
+            {
+              "id": "cfg18",
+              "name": "aiDisclosure",
+              "value": "Made with AI.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "49b39017-a642-5037-ad75-e979e328d788",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Ready"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7ec805c3-cc27-5277-9844-ca9619059c46",
+      "name": "Get Ready Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "maxItems": 1
+      },
+      "id": "2f6e3aba-7af7-5331-a093-b69236ab86d1",
+      "name": "Take One",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Take One').first().json.id }}",
+            "status": "Generating",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "4315fdd3-ab32-56e7-92bb-12c7e4ef04b9",
+      "name": "Mark Generating",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        920,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Templates",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "173159b5-1b71-5fec-a3f1-e67ad89155e1",
+      "name": "Get Templates",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1140,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('Config').first().json;\nconst brief = $('Take One').first().json;\nconst tpls = $input.all().map(i => i.json).filter(t => t && t.name);\nconst want = String(brief.template_name || '').trim().toLowerCase();\nconst tpl = tpls.find(t => String(t.name).trim().toLowerCase() === want) || tpls[0] || {};\n\nconst attempt = parseInt(brief.attempts || '0', 10) || 0;\nconst sceneCount = parseInt(brief.scene_count || tpl.scene_count || cfg.defaultSceneCount, 10) || 4;\nconst minW = parseInt(tpl.min_words || cfg.defaultMinWords, 10);\nconst maxW = parseInt(tpl.max_words || cfg.defaultMaxWords, 10);\nconst language = brief.language || 'English';\nconst banned = String(tpl.banned_phrases || '').split(',').map(s => s.trim()).filter(Boolean);\n\nif (!brief.topic || !brief.keyword) {\n  throw new Error('Row ' + brief.id + ' needs both topic and keyword.');\n}\n\nconst system = [\n  'You are a senior content writer and short-form video director. Follow the brand voice strictly.',\n  '',\n  'BRAND VOICE:',\n  tpl.voice || 'Clear, friendly, expert. No hype.',\n  '',\n  'RULES:',\n  tpl.rules || 'Be accurate. Never invent statistics, quotes or sources.',\n  '',\n  'NEVER use these words or phrases: ' + (banned.join('; ') || '(none)') + '.',\n  '',\n  'Write in: ' + language + '.',\n  'Return ONLY valid JSON. No markdown fences and no commentary.'\n].join('\\n');\n\nlet user = [\n  'Create a content package.',\n  '',\n  'Topic: ' + brief.topic,\n  'Primary keyword: ' + brief.keyword,\n  'Audience: ' + (brief.audience || 'general audience'),\n  'Tone: ' + (brief.tone || 'as per brand voice'),\n  'Call to action: ' + (tpl.cta || 'none'),\n  '',\n  'Requirements:',\n  '1. blog_md: a blog post in Markdown, between ' + minW + ' and ' + maxW + ' words, with one H1 title, H2 sections and a short conclusion. Use the primary keyword in the title, in the first 100 words, and naturally 3-6 more times. Do not stuff keywords. Do not invent facts or statistics.',\n  '2. blog_title and meta_description (max 155 characters).',\n  '3. yt_title (max 70 characters), yt_description (2-3 sentences, no hashtags), yt_tags (array of 5-10 short tags), caption (social caption, max 220 characters).',\n  '4. scenes: exactly ' + sceneCount + ' scenes for a vertical short video of about ' + (sceneCount * 8) + ' seconds. Each scene is ONE continuous 8-second shot. Each scene has: n (1,2,3...), visual_prompt, spoken_line, caption.',\n  '   - visual_prompt: 40-80 words covering subject, action, setting, camera movement and lighting. Re-describe the same recurring character and setting in EVERY scene so the look stays consistent. No on-screen text, no logos.',\n  '   - spoken_line: max 16 words. Scene 1 must hook the viewer. The last scene ends with the call to action.',\n  '   - caption: the on-screen caption for the scene (usually identical to spoken_line).'\n].join('\\n');\n\nif (attempt > 0 && brief.qa_notes) {\n  user += '\\n\\nYour previous attempt FAILED these quality checks. Fix exactly these problems:\\n' + brief.qa_notes;\n}\nuser += '\\n\\nReturn JSON with exactly these keys: blog_title, meta_description, blog_md, yt_title, yt_description, yt_tags, caption, scenes.';\n\nreturn [{ json: {\n  id: brief.id, attempt, sceneCount, minW, maxW, banned, keyword: brief.keyword, topic: brief.topic,\n  requestBody: {\n    systemInstruction: { parts: [{ text: system }] },\n    contents: [{ role: 'user', parts: [{ text: user }] }],\n    generationConfig: { responseMimeType: 'application/json', temperature: 0.8, maxOutputTokens: 8192 }\n  }\n}}];\n"
+      },
+      "id": "015fc88a-110a-59b4-91e5-52c19ba21769",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.textModel + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build Prompt').first().json.requestBody) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "313594b2-bff1-52ba-b2b4-bef77b6d3986",
+      "name": "Gemini Generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Gemini API Key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Take One').first().json.id }}",
+            "status": "Error",
+            "error": "Gemini request failed after 3 tries. Open the n8n execution for details.",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "c59842b9-66c0-5782-9f46-82717503a7dd",
+      "name": "Mark Gemini Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1580,
+        560
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst ctx = $('Build Prompt').first().json;\nconst cfg = $('Config').first().json;\nconst resp = $input.first().json;\nconst issues = [];\nlet d = null;\n\ntry {\n  const parts = (resp.candidates && resp.candidates[0] && resp.candidates[0].content && resp.candidates[0].content.parts) || [];\n  let text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('').trim();\n  text = text.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n  d = JSON.parse(text);\n} catch (e) {\n  issues.push('Output was not valid JSON (' + e.message + ')');\n}\n\nlet content = null;\nif (d) {\n  for (const k of ['blog_title','meta_description','blog_md','yt_title','yt_description','yt_tags','caption','scenes']) {\n    if (d[k] === undefined || d[k] === null || d[k] === '') issues.push('Missing field: ' + k);\n  }\n  const blog = String(d.blog_md || '');\n  const words = blog.split(/\\s+/).filter(Boolean).length;\n  if (words < ctx.minW) issues.push('Blog too short: ' + words + ' words (minimum ' + ctx.minW + ')');\n  if (words > ctx.maxW) issues.push('Blog too long: ' + words + ' words (maximum ' + ctx.maxW + ')');\n\n  const kw = String(ctx.keyword || '').trim().toLowerCase();\n  if (kw) {\n    const esc = kw.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    const hits = (blog.toLowerCase().match(new RegExp(esc, 'g')) || []).length;\n    const density = words ? (hits / words * 100) : 0;\n    if (!String(d.blog_title || '').toLowerCase().includes(kw)) issues.push('Keyword is missing from blog_title');\n    const first100 = blog.split(/\\s+/).slice(0, 100).join(' ').toLowerCase();\n    if (!first100.includes(kw)) issues.push('Keyword is missing from the first 100 words');\n    if (density < Number(cfg.minDensity)) issues.push('Keyword density too low: ' + density.toFixed(2) + '% (minimum ' + cfg.minDensity + '%)');\n    if (density > Number(cfg.maxDensity)) issues.push('Keyword density too high: ' + density.toFixed(2) + '% (maximum ' + cfg.maxDensity + '%)');\n  }\n\n  const hay = JSON.stringify(d).toLowerCase();\n  for (const b of ctx.banned) {\n    if (hay.includes(b.toLowerCase())) issues.push('Banned phrase used: \"' + b + '\"');\n  }\n\n  if (String(d.yt_title || '').length > 100) issues.push('yt_title is longer than 100 characters');\n\n  if (!Array.isArray(d.scenes)) {\n    issues.push('scenes is not an array');\n  } else {\n    if (d.scenes.length !== ctx.sceneCount) issues.push('Expected ' + ctx.sceneCount + ' scenes but got ' + d.scenes.length);\n    d.scenes.forEach((s, i) => {\n      if (!s.visual_prompt || String(s.visual_prompt).length < 40) issues.push('Scene ' + (i + 1) + ': visual_prompt is missing or too short');\n      const w = String(s.spoken_line || '').split(/\\s+/).filter(Boolean).length;\n      if (w > 20) issues.push('Scene ' + (i + 1) + ': spoken_line has ' + w + ' words (maximum 20 so it fits in 8 seconds)');\n    });\n  }\n\n  if (issues.length === 0) {\n    content = {\n      blog_title: d.blog_title,\n      meta_description: d.meta_description,\n      blog_md: d.blog_md,\n      yt_title: d.yt_title,\n      yt_description: d.yt_description,\n      yt_tags: Array.isArray(d.yt_tags) ? d.yt_tags.join(',') : String(d.yt_tags),\n      caption: d.caption,\n      script_json: JSON.stringify(d.scenes.map((s, i) => ({\n        n: i + 1, visual_prompt: s.visual_prompt, spoken_line: s.spoken_line || '', caption: s.caption || s.spoken_line || ''\n      })))\n    };\n  }\n}\n\nconst attempts = ctx.attempt + 1;\nconst pass = issues.length === 0;\nreturn [{ json: {\n  id: ctx.id, pass, issues, attempts,\n  nextStatus: attempts >= Number(cfg.maxAttempts) ? 'QA Failed' : 'Ready',\n  qaNotes: issues.map(i => '- ' + i).join('\\n'),\n  content\n}}];\n"
+      },
+      "id": "09f8f473-9bea-5049-b9bb-cb66a5e5f643",
+      "name": "Parse and QA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.pass }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0f4cf4f-009a-589f-913a-ebfde5b57a3d",
+      "name": "QA Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2020,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Parse and QA').first().json.id }}",
+            "status": "Pending Approval",
+            "attempts": "={{ $('Parse and QA').first().json.attempts }}",
+            "qa_notes": "OK",
+            "error": "",
+            "blog_title": "={{ $('Parse and QA').first().json.content.blog_title }}",
+            "meta_description": "={{ $('Parse and QA').first().json.content.meta_description }}",
+            "blog_md": "={{ $('Parse and QA').first().json.content.blog_md }}",
+            "yt_title": "={{ $('Parse and QA').first().json.content.yt_title }}",
+            "yt_description": "={{ $('Parse and QA').first().json.content.yt_description }}",
+            "yt_tags": "={{ $('Parse and QA').first().json.content.yt_tags }}",
+            "caption": "={{ $('Parse and QA').first().json.content.caption }}",
+            "script_json": "={{ $('Parse and QA').first().json.content.script_json }}",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attempts",
+              "displayName": "attempts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "qa_notes",
+              "displayName": "qa_notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "blog_title",
+              "displayName": "blog_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "meta_description",
+              "displayName": "meta_description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "blog_md",
+              "displayName": "blog_md",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "yt_title",
+              "displayName": "yt_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "yt_description",
+              "displayName": "yt_description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "yt_tags",
+              "displayName": "yt_tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "caption",
+              "displayName": "caption",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "script_json",
+              "displayName": "script_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "da7d6447-73a3-52be-8a0f-64f6b56be480",
+      "name": "Save Content",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2260,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.notifyEmail }}",
+        "subject": "=Content ready for approval: {{ $('Parse and QA').first().json.content.blog_title }}",
+        "emailType": "text",
+        "message": "=A new content package passed the quality checks.\n\nBlog: {{ $('Parse and QA').first().json.content.blog_title }}\nYouTube title: {{ $('Parse and QA').first().json.content.yt_title }}\n\nOpen the sheet, review the row (you can edit any cell, including script_json), then set status to Approved to start video creation.\nhttps://docs.google.com/spreadsheets/d/{{ $('Config').first().json.sheetId }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "b0e2a293-0ab7-5ee9-b205-dd422157dcf6",
+      "name": "Email - approval needed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2500,
+        200
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Parse and QA').first().json.id }}",
+            "status": "={{ $('Parse and QA').first().json.nextStatus }}",
+            "attempts": "={{ $('Parse and QA').first().json.attempts }}",
+            "qa_notes": "={{ $('Parse and QA').first().json.qaNotes }}",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attempts",
+              "displayName": "attempts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "qa_notes",
+              "displayName": "qa_notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "1748fb6b-d406-5da2-bc23-3ce70187507d",
+      "name": "Save QA Failure",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2260,
+        420
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Parse and QA').first().json.nextStatus === 'QA Failed' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "851bbad8-971d-5a84-a5a3-c79faf87b644",
+      "name": "Out of attempts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2500,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.notifyEmail }}",
+        "subject": "=Content failed QA after all attempts: {{ $('Parse and QA').first().json.id }}",
+        "emailType": "text",
+        "message": "=Row {{ $('Parse and QA').first().json.id }} failed the quality checks {{ $('Parse and QA').first().json.attempts }} times.\n\n{{ $('Parse and QA').first().json.qaNotes }}\n\nEdit the brief / template, then set status back to Ready (and attempts to 0) to try again.\nhttps://docs.google.com/spreadsheets/d/{{ $('Config').first().json.sheetId }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e557227a-42f5-5927-acb1-b75717f85a8b",
+      "name": "Email - QA failed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2740,
+        420
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get Ready Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Ready Rows": {
+      "main": [
+        [
+          {
+            "node": "Take One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Take One": {
+      "main": [
+        [
+          {
+            "node": "Mark Generating",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Generating": {
+      "main": [
+        [
+          {
+            "node": "Get Templates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Templates": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini Generate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Generate": {
+      "main": [
+        [
+          {
+            "node": "Parse and QA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Gemini Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and QA": {
+      "main": [
+        [
+          {
+            "node": "QA Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Passed?": {
+      "main": [
+        [
+          {
+            "node": "Save Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save QA Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Content": {
+      "main": [
+        [
+          {
+            "node": "Email - approval needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save QA Failure": {
+      "main": [
+        [
+          {
+            "node": "Out of attempts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Out of attempts?": {
+      "main": [
+        [
+          {
+            "node": "Email - QA failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
